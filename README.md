@@ -1,4 +1,5 @@
 # simple-kook-voice
+
 - - -
 Python SDK for kook music bot
 
@@ -7,8 +8,8 @@ Python SDK for kook music bot
 ```python
 import kookvoice
 
-kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe" # ffmpeg路径，如果已经配置环境变量可以不用填写
-music_path_or_link = "https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3" # 仅示例音频，侵权请联系删除
+kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"  # ffmpeg路径，如果已经配置环境变量可以不用填写
+music_path_or_link = "https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3"  # 仅示例音频，侵权请联系删除
 player = kookvoice.Player('服务器id', '语音频道id', '机器人token')
 player.add_music(music_path_or_link)
 
@@ -23,10 +24,8 @@ import kookvoice
 from khl import *
 from khl.card import *
 
-
 bot_token = 'your_kook_bot_token'
-kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe" # ffmpeg路径，如果已经配置环境变量可以不用填写
-
+kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"  # ffmpeg路径，如果已经配置环境变量可以不用填写
 
 bot = Bot(token=bot_token)
 
@@ -39,6 +38,7 @@ async def find_user(gid, aid):
     if voice_channel:
         vcid = voice_channel[0]['id']
         return vcid
+
 
 # 指令： /播放 https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3
 @bot.command(name='播放')
@@ -55,6 +55,7 @@ async def play(msg: Message, music_url: str):
     player.add_music(music_url)
     await msg.ctx.channel.send(f'开始播放 {music_url}')
 
+
 # 指令： /跳过
 @bot.command(name='跳过')
 async def skip(msg: Message):
@@ -62,12 +63,14 @@ async def skip(msg: Message):
     player.skip()
     await msg.ctx.channel.send(f'已跳过当前歌曲')
 
+
 # 指令： /停止
 @bot.command(name='停止')
 async def stop(msg: Message):
     player = kookvoice.Player(msg.ctx.guild.id)
     player.stop()
     await msg.ctx.channel.send(f'播放已停止')
+
 
 # 指令： /列表
 @bot.command(name="列表")
@@ -78,8 +81,8 @@ async def list(msg: Message):
     c.append(Module.Context('正在播放'))
     c.append(Module.Header(f"{music_list.pop(0)['file']}"))
     c.append(Module.Divider())
-    for index,i in enumerate(music_list):
-        c.append(Module.Context(f"{index+1}. {i['file']}"))
+    for index, i in enumerate(music_list):
+        c.append(Module.Context(f"{index + 1}. {i['file']}"))
     await msg.ctx.channel.send(CardMessage(c))
 
 
