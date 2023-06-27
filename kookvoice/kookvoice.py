@@ -75,14 +75,13 @@ class Player:
             play_list[self.guild_id] = {'token': self.token,
                                         'now_playing': None,
                                         'play_list': []}
-        current_file_path = os.path.abspath(__file__)
-        current_dir_path = os.path.dirname(current_file_path)
-        real_path = os.path.join(current_dir_path, music)
-        if not os.path.exists(real_path):
-            # print(real_path)
-            raise ValueError('文件不存在')
+
+        if not 'http' in music:
+            if not os.path.exists(music):
+                # print(real_path)
+                raise ValueError('文件不存在')
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
-        play_list[self.guild_id]['play_list'].append({'file': real_path, 'ss': 0})
+        play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0})
         # print(play_list)
 
     def stop(self):
@@ -109,7 +108,6 @@ class Player:
 
 class PlayHandler(threading.Thread):
     channel_id: str = None
-
 
     def __init__(self, guild_id: str, token: str):
         threading.Thread.__init__(self)
@@ -268,3 +266,7 @@ async def start():
             await asyncio.sleep(0.1)
         except:
             print(traceback.format_exc())
+
+
+def run():
+    asyncio.run(start())
