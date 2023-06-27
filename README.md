@@ -1,5 +1,4 @@
 # simple-kook-voice
-- - -
 Python SDK for kook music bot
 
 # Minimal Example
