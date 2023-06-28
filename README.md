@@ -1,8 +1,10 @@
 # simple-kook-voice
 
+
 Python SDK for kook music bot  
 希望做成一款开箱即用的推流sdk  
 遇到问题/功能建议/代码贡献都可以来 [KOOK服务器](https://kook.top/5KOq5I) 找我
+
 
 # Special Thanks
 hank9999： 提供了voice.py 以及 大部分推流底层逻辑
