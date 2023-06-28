@@ -17,6 +17,7 @@ class Status(Enum):
     WAIT = 1
     SKIP = 2
     END = 3
+    START = 4
     PLAYING = 10
     EMPTY = 11
 
@@ -62,9 +63,10 @@ class Player:
     # def join(self):
     #     not finished
 
-    def add_music(self, music: str):
+    def add_music(self, music: str, extra_data: dict = None):
         """Adding music to the playlist
             :param str music: music_file_path or music_url
+            :param dict extra_data: you can save music information here
         """
 
         if self.voice_channel_id is None:
@@ -75,7 +77,6 @@ class Player:
             play_list[self.guild_id] = {'token': self.token,
                                         'now_playing': None,
                                         'play_list': []}
-
         if not 'http' in music:
             if not os.path.exists(music):
                 # print(real_path)
@@ -85,15 +86,26 @@ class Player:
         # print(play_list)
 
     def stop(self):
-        global guild_status
+        global guild_status, playlist_handle_status
         if self.guild_id not in play_list:
             raise ValueError('该服务器没有正在播放的歌曲')
         guild_status[self.guild_id] = Status.STOP
+        await asyncio.sleep(2)
+        if self.guild_id in playlist_handle_status:
+            del playlist_handle_status[self.guild_id]
 
-    def skip(self):
+    def skip(self, skip_amount: int = 1):
+        '''跳过指定数量的歌曲
+            :param amount int: 要跳过的歌曲数量,默认为一首
+        '''
         global guild_status
         if self.guild_id not in play_list:
             raise ValueError('该服务器没有正在播放的歌曲')
+        for i in range(skip_amount - 1):
+            try:
+                play_list[self.guild_id]['play_list'].pop(0)
+            except:
+                pass
         guild_status[self.guild_id] = Status.SKIP
 
     def list(self, json=True):
@@ -102,8 +114,59 @@ class Player:
         if json:
             return [play_list[self.guild_id]['now_playing'], *play_list[self.guild_id]['play_list']]
         else:
-            ...
             # 懒得写
+            ...
+
+    def seek(self, music_seconds: int):
+        '''跳转至歌曲指定位置
+            :param music_seconds int: 所要跳转到歌曲的秒数
+        '''
+        global play_list
+        if self.guild_id not in play_list:
+            raise ValueError('该服务器没有正在播放的歌曲')
+        now_play = play_list[self.guild_id]['now_playing']
+        now_play['ss'] = int(music_seconds)
+        if 'start' in now_play:
+            del now_play['start']
+        new_list = [now_play, *play_list[self.guild_id]['play_list']]
+        play_list[self.guild_id]['play_list'] = new_list
+        await asyncio.sleep(1)
+        guild_status[self.guild_id] = Status.SEEK
+
+
+# 这一部分我不太会，写的很烂有无大佬帮忙改一下（）
+# 主要就是希望在歌曲结束（或者其他状态）的时候能发送一个事件
+
+
+events = {}
+
+
+class PlayInfo:
+    def __init__(self, guild_id, voice_channel_id, file, bot_token, extra_data):
+        self.file = file
+        self.extra_data = extra_data
+        self.guild_id = guild_id
+        self.voice_channel_id = voice_channel_id
+        self.token = bot_token
+
+
+def on_event(event):
+    global events
+    def _on_event_wrapper(func):
+        if event not in events:
+            events[event] = []
+        events[event].append(func)
+        return func
+    return _on_event_wrapper
+
+
+async def trigger_event(event, *args, **kwargs):
+    if event in events:
+        for func in events[event]:
+            res = await func(*args, **kwargs)
+
+
+print(events)
 
 
 class PlayHandler(threading.Thread):
@@ -223,10 +286,12 @@ class PlayHandler(threading.Thread):
                     while True:
                         if self.guild not in guild_status:
                             guild_status[self.guild] = Status.END
-
                         if guild_status[self.guild] != Status.PLAYING:
                             state = guild_status[self.guild]
                             if state == Status.END:
+                                await trigger_event(Status.START,
+                                                    PlayInfo(self.guild, last_voice_channel, file, self.token,
+                                                             music_info.get('extra', {})))
                                 guild_status[self.guild] = Status.PLAYING
                             elif state == Status.SKIP:
                                 flag = 1
