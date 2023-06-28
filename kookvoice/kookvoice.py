@@ -166,9 +166,6 @@ async def trigger_event(event, *args, **kwargs):
             res = await func(*args, **kwargs)
 
 
-print(events)
-
-
 class PlayHandler(threading.Thread):
     channel_id: str = None
 
