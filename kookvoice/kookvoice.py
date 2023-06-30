@@ -60,8 +60,18 @@ class Player:
         self.token = str(token)
         self.voice_channel_id = str(voice_channel_id)
 
-    # def join(self):
-    #     not finished
+    def join(self):
+        global guild_status
+        if self.voice_channel_id is None:
+            raise ValueError('第一次启动推流时，你需要指定语音频道id')
+        if self.token is None:
+            raise ValueError('第一次启动推流时，你需要指定机器人token')
+        if self.guild_id not in play_list:
+            play_list[self.guild_id] = {'token': self.token,
+                                        'now_playing': None,
+                                        'play_list': []}
+        guild_status[self.guild_id] = Status.WAIT
+        play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
 
     def add_music(self, music: str, extra_data: dict = None):
         """Adding music to the playlist
@@ -81,8 +91,11 @@ class Player:
             if not os.path.exists(music):
                 # print(real_path)
                 raise ValueError('文件不存在')
+
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
         play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0})
+        if self.guild_id in guild_status and guild_status[self.guild_id] == Status.WAIT:
+            guild_status[self.guild_id] = Status.END
         # print(play_list)
 
     def stop(self):
@@ -90,9 +103,9 @@ class Player:
         if self.guild_id not in play_list:
             raise ValueError('该服务器没有正在播放的歌曲')
         guild_status[self.guild_id] = Status.STOP
-        await asyncio.sleep(2)
-        if self.guild_id in playlist_handle_status:
-            del playlist_handle_status[self.guild_id]
+        # await asyncio.sleep(2)
+        # if self.guild_id in playlist_handle_status:
+        #     del playlist_handle_status[self.guild_id]
 
     def skip(self, skip_amount: int = 1):
         '''跳过指定数量的歌曲
@@ -130,7 +143,7 @@ class Player:
             del now_play['start']
         new_list = [now_play, *play_list[self.guild_id]['play_list']]
         play_list[self.guild_id]['play_list'] = new_list
-        await asyncio.sleep(1)
+        # await asyncio.sleep(1)
         guild_status[self.guild_id] = Status.SEEK
 
 
@@ -237,6 +250,9 @@ class PlayHandler(threading.Thread):
 
             while True:
                 await asyncio.sleep(0.5)
+                while self.guild in guild_status and guild_status[self.guild] == Status.WAIT:
+                    await asyncio.sleep(1)
+
                 if play_list[self.guild]['now_playing'] and not play_list[self.guild]['play_list']:
                     music_info = play_list[self.guild]['now_playing']
                 else:
