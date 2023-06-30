@@ -1,10 +1,8 @@
 # simple-kook-voice
 
-
 Python SDK for kook music bot  
 希望做成一款开箱即用的推流sdk  
 遇到问题/功能建议/代码贡献都可以来 [KOOK服务器](https://kook.top/5KOq5I) 找我
-
 
 # Special Thanks
 hank9999： 提供了voice.py 以及 大部分推流底层逻辑
@@ -59,6 +57,23 @@ async def find_user(gid, aid):
     if voice_channel:
         vcid = voice_channel[0]['id']
         return vcid
+
+
+# 让点歌机加入歌曲
+# 这条指令其实完全没用，因为点歌了会自动加入语音频道
+# 但是还是写了，万一有人要呢
+# 指令： /join
+@bot.command(name='join')
+async def join_vc(msg:Message):
+    # 获取用户所在频道
+    voice_channel_id = await find_user(msg.ctx.guild.id, msg.author_id)
+    if voice_channel_id is None:
+        await msg.ctx.channel.send('请先加入语音频道')
+        return
+    player = kookvoice.Player(msg.ctx.guild.id, voice_channel_id, bot_token)
+    player.join()
+    voice_channel = await bot.client.fetch_public_channel(voice_channel_id)
+    await msg.ctx.channel.send(f'已加入语音频道 #{voice_channel.name}')
 
 
 # 播放直链或本地歌曲
@@ -142,7 +157,7 @@ async def seek(msg: Message, time: int):
 async def on_music_start(play_info: kookvoice.PlayInfo):
     guild_id = play_info.guild_id
     voice_channel_id = play_info.voice_channel_id
-    music_bot_token = play_info.music_bot_token
+    music_bot_token = play_info.token
     extra_data = play_info.extra_data  # 你可以在这里获取到歌曲的备注信息
     text_channel_id = extra_data['文字频道']
     text_channel = await bot.client.fetch_public_channel(text_channel_id)
