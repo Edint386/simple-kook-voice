@@ -24,14 +24,13 @@ class Status(Enum):
 
 guild_status = {}
 play_list: Dict[str, Dict[str, Union[str, Dict, List[Dict]]]] = {}
-play_list_example = {"机器人token":
-                         {'服务器id':
+play_list_example = {'服务器id':
                               {'token': '机器人token',
                                'voice_channel': '语音频道id',
                                'text_channel': '最后一次执行指令的文字频道id',
                                'now_playing': {'file': '歌曲文件', 'ss': 0, 'start': 0},
                                'play_list': [
-                                   {'file': '路径', 'ss': 0}]}}}
+                                   {'file': '路径', 'ss': 0}]}}
 
 playlist_handle_status = {}
 
