@@ -17,8 +17,8 @@ kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"
 ```
 其余python依赖已写在reqirements.txt中  
 当然你可以可以直接
-`pip install enum`  
-~~因为就这一个依赖~~
+`pip install aiohttp`  
+~~因为就这一个依赖 而且如果常用khl.py肯定装了~~
 
 
 
@@ -36,6 +36,7 @@ kookvoice.run()
 
    
 看过了基础的使用教程，但是如何与机器人(khl.py)实现结合呢？
+还没接触过khl.py的情况下记得先 `pip install khl.py`
 
 ```python
 import asyncio
