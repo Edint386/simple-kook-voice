@@ -42,14 +42,13 @@ import asyncio
 import kookvoice
 from khl import *
 
-bot_token = 'your_kook_bot_token'
-kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"  # ffmpeg路径，如果已经配置环境变量可以不用填写
-
+bot_token = 'your_bot_token'
 bot = Bot(token=bot_token)
+
+kookvoice.set_ffmpeg("D:/Apps/ffmpeg/bin/ffmpeg.exe")
 
 
 async def find_user(gid, aid):
-    global current_voice_channel
     # 调用接口查询用户所在的语音频道
     voice_channel_ = await bot.client.gate.request('GET', 'channel-user/get-joined-channel',
                                                    params={'guild_id': gid, 'user_id': aid})
@@ -64,7 +63,7 @@ async def find_user(gid, aid):
 # 但是还是写了，万一有人要呢
 # 指令： /join
 @bot.command(name='join')
-async def join_vc(msg:Message):
+async def join_vc(msg: Message):
     # 获取用户所在频道
     voice_channel_id = await find_user(msg.ctx.guild.id, msg.author_id)
     if voice_channel_id is None:
@@ -80,6 +79,8 @@ async def join_vc(msg:Message):
 # 指令： /播放 https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3
 @bot.command(name='播放')
 async def play(msg: Message, music_url: str):
+    kookvoice.ffmpeg_bin = "D:/Apps/ffmpeg/bin/ffmpeg.exe"
+
     # 第一步：获取用户所在的语音频道
     voice_channel_id = await find_user(msg.ctx.guild.id, msg.author_id)
     # 如果不在语音频道就提示加入语音频道后点歌
@@ -153,6 +154,9 @@ async def seek(msg: Message, time: int):
 
 
 # 切歌时触发事件便于发送开始的消息
+from kookvoice import run_async
+
+
 @kookvoice.on_event(kookvoice.Status.START)
 async def on_music_start(play_info: kookvoice.PlayInfo):
     guild_id = play_info.guild_id
@@ -160,6 +164,7 @@ async def on_music_start(play_info: kookvoice.PlayInfo):
     music_bot_token = play_info.token
     extra_data = play_info.extra_data  # 你可以在这里获取到歌曲的备注信息
     text_channel_id = extra_data['文字频道']
+
     text_channel = await bot.client.fetch_public_channel(text_channel_id)
     await text_channel.send(f"正在播放 {play_info.file}")
 
