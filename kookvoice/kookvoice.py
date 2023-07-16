@@ -5,10 +5,19 @@ import time
 import traceback
 from enum import Enum, unique
 from typing import Dict, Union, List
+from asyncio import AbstractEventLoop
 
 from .voice import Voice
 
-ffmpeg_bin = os.environ.get('FFMPEG_BIN', 'ffmpeg')
+
+ffmpeg_bin = os.environ.get('FFMPEG_BIN')
+
+original_loop = AbstractEventLoop()
+
+def set_ffmpeg(path):
+    global ffmpeg_bin
+    ffmpeg_bin = path
+
 
 
 @unique
@@ -59,6 +68,7 @@ class Player:
         self.token = str(token)
         self.voice_channel_id = str(voice_channel_id)
 
+
     def join(self):
         global guild_status
         if self.voice_channel_id is None:
@@ -72,7 +82,7 @@ class Player:
         guild_status[self.guild_id] = Status.WAIT
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
 
-    def add_music(self, music: str, extra_data: dict = None):
+    def add_music(self, music: str, extra_data: dict = {}):
         """Adding music to the playlist
             :param str music: music_file_path or music_url
             :param dict extra_data: you can save music information here
@@ -91,8 +101,9 @@ class Player:
                 # print(real_path)
                 raise ValueError('文件不存在')
 
+
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
-        play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0})
+        play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0,'extra':extra_data})
         if self.guild_id in guild_status and guild_status[self.guild_id] == Status.WAIT:
             guild_status[self.guild_id] = Status.END
         # print(play_list)
@@ -237,6 +248,9 @@ class PlayHandler(threading.Thread):
                     break
                 await asyncio.sleep(0.2)
             command = f'{ffmpeg_bin} -re -loglevel level+info -nostats -i - -map 0:a:0 -acodec libopus -ab 128k -ac 2 -ar 48000 -f tee [select=a:f=rtp:ssrc=1357:payload_type=100]{rtp_url}'
+            print('==============================')
+            print(ffmpeg_bin)
+            print(command)
             p = await asyncio.create_subprocess_shell(
                 command,
                 stdin=asyncio.subprocess.PIPE,
@@ -260,6 +274,7 @@ class PlayHandler(threading.Thread):
                 # -filter:a "loudnorm=i=-27:tp=0.0"
                 command2 = f'{ffmpeg_bin}  -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2  -ar 48000 -f wav -'
 
+                print(command2)
                 p2 = await asyncio.create_subprocess_shell(
                     command2,
                     stdin=asyncio.subprocess.DEVNULL,
@@ -301,9 +316,10 @@ class PlayHandler(threading.Thread):
                         if guild_status[self.guild] != Status.PLAYING:
                             state = guild_status[self.guild]
                             if state == Status.END:
-                                await trigger_event(Status.START,
+                                asyncio.run_coroutine_threadsafe(trigger_event(Status.START,
                                                     PlayInfo(self.guild, last_voice_channel, file, self.token,
-                                                             music_info.get('extra', {})))
+                                                             music_info.get('extra'))),original_loop )
+                                print(time.time())
                                 guild_status[self.guild] = Status.PLAYING
                             elif state == Status.SKIP:
                                 flag = 1
@@ -329,6 +345,9 @@ class PlayHandler(threading.Thread):
 
 
 async def start():
+
+    global original_loop
+    original_loop = asyncio.get_event_loop()
     while True:
         try:
             for guild in play_list.keys():
@@ -343,6 +362,10 @@ async def start():
             await asyncio.sleep(0.1)
         except:
             print(traceback.format_exc())
+
+from typing import Coroutine
+async def run_async(task:Coroutine,timeout=10):
+    return asyncio.run_coroutine_threadsafe(task,original_loop).result(timeout=timeout)
 
 
 def run():
