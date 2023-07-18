@@ -10,7 +10,7 @@ from asyncio import AbstractEventLoop
 from .voice import Voice
 
 
-ffmpeg_bin = os.environ.get('FFMPEG_BIN')
+ffmpeg_bin = os.environ.get('FFMPEG_BIN','ffmpeg')
 
 original_loop = AbstractEventLoop()
 
