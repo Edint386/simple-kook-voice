@@ -206,8 +206,8 @@ class PlayHandler(threading.Thread):
         print("处理完成：" + self.guild)
 
     async def main(self):
-        task1 = self.push()
-        task2 = self.voice.handler()
+        task1 = asyncio.create_task(self.push())
+        task2 = asyncio.create_task(self.voice.handler())
         task3 = self.stop()
 
         try:
