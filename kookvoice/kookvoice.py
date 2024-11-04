@@ -2,16 +2,12 @@ import asyncio
 import os
 import threading
 import time
-import traceback
 import logging
 from enum import Enum, unique
 from typing import Dict, Union, List
 from asyncio import AbstractEventLoop
-
-from pycparser.ply.yacc import token
-
 from .requestor import VoiceRequestor
-import aiohttp
+
 
 from .voice import Voice
 
@@ -19,7 +15,7 @@ from .voice import Voice
 logger = logging.getLogger(__name__)
 log_enabled = False
 
-def configure_logging(enabled: bool):
+def configure_logging(enabled: bool = True):
     global log_enabled
     log_enabled = enabled
     if enabled:

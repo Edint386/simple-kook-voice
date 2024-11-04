@@ -5,15 +5,18 @@ Python SDK for kook music bot
 遇到问题/功能建议/代码贡献都可以来 [KOOK服务器](https://kook.top/5KOq5I) 找我
 
 # Special Thanks
-hank9999： 提供了voice.py 以及 大部分推流底层逻辑
+hank9999： 提供了0.0.x版本中的voice.py 以及 大部分推流底层逻辑
 
-# 安装依赖
+# 安装
+```shell
+pip install kookvoice
+```
 需要自备ffmpeg且配置好全局变量  
 不配置全局变量的话需要在代码中指定ffmpeg路径  如下：
 ```python
 import kookvoice
 
-kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"
+kookvoice.set_ffmpeg("F:/ffmpeg/bin/ffmpeg.exe")
 ```
 其余python依赖已写在reqirements.txt中  
 当然你可以可以直接
@@ -27,7 +30,9 @@ kookvoice.ffmpeg_bin = "F:/ffmpeg/bin/ffmpeg.exe"
 ```python
 import kookvoice
 
-music_path_or_link = "https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3"  # 仅示例音频，侵权请联系删除
+kookvoice.configure_logging()
+
+music_path_or_link = "https://static.xsnight.cn/Ulchero,Couple%20N%20-%20Love%20Trip.mp3"  # 仅示例音频，侵权请联系删除
 player = kookvoice.Player('服务器id', '语音频道id', '机器人token')
 player.add_music(music_path_or_link)
 
@@ -46,8 +51,8 @@ from khl import *
 bot_token = 'your_bot_token'
 bot = Bot(token=bot_token)
 
-kookvoice.set_ffmpeg("D:/Apps/ffmpeg/bin/ffmpeg.exe")
-
+kookvoice.set_ffmpeg("ffmepg")
+kookvoice.configure_logging()
 
 async def find_user(gid, aid):
     # 调用接口查询用户所在的语音频道
@@ -77,10 +82,9 @@ async def join_vc(msg: Message):
 
 
 # 播放直链或本地歌曲
-# 指令： /播放 https://api.kookbot.cn/static/Ulchero,Couple%20N-LoveTrip.mp3
+# 指令： /播放 https://static.xsnight.cn/Ulchero,Couple%20N%20-%20Love%20Trip.mp3
 @bot.command(name='播放')
 async def play(msg: Message, music_url: str):
-    kookvoice.ffmpeg_bin = "D:/Apps/ffmpeg/bin/ffmpeg.exe"
 
     # 第一步：获取用户所在的语音频道
     voice_channel_id = await find_user(msg.ctx.guild.id, msg.author_id)
@@ -182,8 +186,6 @@ if __name__ == '__main__':
 在保证 **简单易用** 的宗旨下，十分欢迎大家的pr！
 
 
-- - -
-对了家人们有没有会pypi的教教我怎么发包（）  太蠢了整不明白
 
 
 

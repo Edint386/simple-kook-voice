@@ -1,5 +1,5 @@
 from .kookvoice import Player, start, run,PlayInfo,on_event, set_ffmpeg
-from .kookvoice import run_async, configure_logging
+from .kookvoice import run_async, configure_logging, Status
 
 
 __all__ = [
@@ -10,7 +10,8 @@ __all__ = [
     "start",
     "run",
     "PlayInfo",
-    "configure_logging"
+    "configure_logging",
+    "Status"
 ]
 
 
