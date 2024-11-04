@@ -3,22 +3,37 @@ import os
 import threading
 import time
 import traceback
+import logging
 from enum import Enum, unique
 from typing import Dict, Union, List
 from asyncio import AbstractEventLoop
 
+from pycparser.ply.yacc import token
+
+from .requestor import VoiceRequestor
+import aiohttp
+
 from .voice import Voice
 
+# 配置日志
+logger = logging.getLogger(__name__)
+log_enabled = False
 
-ffmpeg_bin = os.environ.get('FFMPEG_BIN','ffmpeg')
+def configure_logging(enabled: bool):
+    global log_enabled
+    log_enabled = enabled
+    if enabled:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    else:
+        logging.disable(logging.CRITICAL)
+
+ffmpeg_bin = os.environ.get('FFMPEG_BIN', 'ffmpeg')
 
 original_loop = AbstractEventLoop()
 
 def set_ffmpeg(path):
     global ffmpeg_bin
     ffmpeg_bin = path
-
-
 
 @unique
 class Status(Enum):
@@ -29,7 +44,6 @@ class Status(Enum):
     START = 4
     PLAYING = 10
     EMPTY = 11
-
 
 guild_status = {}
 play_list: Dict[str, Dict[str, Union[str, Dict, List[Dict]]]] = {}
@@ -42,7 +56,6 @@ play_list_example = {'服务器id':
                                    {'file': '路径', 'ss': 0}]}}
 
 playlist_handle_status = {}
-
 
 class Player:
     def __init__(self, guild_id, voice_channel_id=None, token=None):
@@ -64,10 +77,8 @@ class Player:
             else:
                 if voice_channel_id != play_list[self.guild_id]['voice_channel']:
                     raise ValueError('播放歌曲过程中无法更换语音频道')
-                # 将会支持切换频道
         self.token = str(token)
         self.voice_channel_id = str(voice_channel_id)
-
 
     def join(self):
         global guild_status
@@ -81,41 +92,50 @@ class Player:
                                         'play_list': []}
         guild_status[self.guild_id] = Status.WAIT
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
+        if log_enabled:
+            logger.info(f'加入语音频道: {self.voice_channel_id}，服务器: {self.guild_id}')
+        PlayHandler(self.guild_id, self.token).start()
 
     def add_music(self, music: str, extra_data: dict = {}):
-        """Adding music to the playlist
-            :param str music: music_file_path or music_url
-            :param dict extra_data: you can save music information here
+        """添加音乐到播放列表
+            :param str music: 音乐文件路径或音乐链接
+            :param dict extra_data: 可以在这里保存音乐信息
         """
-
         if self.voice_channel_id is None:
             raise ValueError('第一次启动推流时，你需要指定语音频道id')
         if self.token is None:
             raise ValueError('第一次启动推流时，你需要指定机器人token')
+        need_start = False
         if self.guild_id not in play_list:
+            need_start = True
             play_list[self.guild_id] = {'token': self.token,
                                         'now_playing': None,
                                         'play_list': []}
         if not 'http' in music:
             if not os.path.exists(music):
-                # print(real_path)
                 raise ValueError('文件不存在')
 
-
         play_list[self.guild_id]['voice_channel'] = self.voice_channel_id
-        play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0,'extra':extra_data})
+        play_list[self.guild_id]['play_list'].append({'file': music, 'ss': 0, 'extra': extra_data})
+        if log_enabled:
+            logger.info(f'添加音乐到播放列表，服务器: {self.guild_id}，音乐: {music}')
         if self.guild_id in guild_status and guild_status[self.guild_id] == Status.WAIT:
             guild_status[self.guild_id] = Status.END
-        # print(play_list)
+        if need_start:
+            if play_list[self.guild_id]['play_list']:
+                PlayHandler(self.guild_id, self.token).start()
+            elif ((self.guild_id not in playlist_handle_status
+                   or (not playlist_handle_status[self.guild_id]))
+                  and play_list[self.guild_id]['play_list']):
+                PlayHandler(self.guild_id, self.token).start()
 
     def stop(self):
         global guild_status, playlist_handle_status
         if self.guild_id not in play_list:
             raise ValueError('该服务器没有正在播放的歌曲')
         guild_status[self.guild_id] = Status.STOP
-        # await asyncio.sleep(2)
-        # if self.guild_id in playlist_handle_status:
-        #     del playlist_handle_status[self.guild_id]
+        if log_enabled:
+            logger.info(f'停止播放，服务器: {self.guild_id}')
 
     def skip(self, skip_amount: int = 1):
         '''跳过指定数量的歌曲
@@ -130,6 +150,8 @@ class Player:
             except:
                 pass
         guild_status[self.guild_id] = Status.SKIP
+        if log_enabled:
+            logger.info(f'跳过了 {skip_amount} 首歌曲，服务器: {self.guild_id}')
 
     def list(self, json=True):
         if self.guild_id not in play_list:
@@ -151,18 +173,15 @@ class Player:
         now_play['ss'] = int(music_seconds)
         if 'start' in now_play:
             del now_play['start']
-        new_list = [now_play, *play_list[self.guild_id]['play_list']]
-        play_list[self.guild_id]['play_list'] = new_list
-        # await asyncio.sleep(1)
-        guild_status[self.guild_id] = Status.SEEK
+        play_list[self.guild_id]['play_list'].insert(0, now_play)
+        guild_status[self.guild_id] = Status.SKIP
+        if log_enabled:
+            logger.info(f'跳转至 {music_seconds} 秒，服务器: {self.guild_id}')
 
 
-# 这一部分我不太会，写的很烂有无大佬帮忙改一下（）
-# 主要就是希望在歌曲结束（或者其他状态）的时候能发送一个事件
-
+# 事件处理部分
 
 events = {}
-
 
 class PlayInfo:
     def __init__(self, guild_id, voice_channel_id, file, bot_token, extra_data):
@@ -171,7 +190,6 @@ class PlayInfo:
         self.guild_id = guild_id
         self.voice_channel_id = voice_channel_id
         self.token = bot_token
-
 
 def on_event(event):
     global events
@@ -182,12 +200,10 @@ def on_event(event):
         return func
     return _on_event_wrapper
 
-
 async def trigger_event(event, *args, **kwargs):
     if event in events:
         for func in events[event]:
             res = await func(*args, **kwargs)
-
 
 class PlayHandler(threading.Thread):
     channel_id: str = None
@@ -196,61 +212,79 @@ class PlayHandler(threading.Thread):
         threading.Thread.__init__(self)
         self.token = token
         self.guild = guild_id
-        self.voice = Voice(token)
-        # self.zmq_port = str(get_free_port())
+        self.requestor = VoiceRequestor(token)
 
     def run(self):
-        print("开始处理：" + self.guild)
+        if log_enabled:
+            logger.info(f'开始处理，服务器: {self.guild}')
         loop_t = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop_t)
         loop_t.run_until_complete(self.main())
-        print("处理完成：" + self.guild)
+        if log_enabled:
+            logger.info(f'处理完成，服务器: {self.guild}')
 
     async def main(self):
+        start_event = asyncio.Event()
         task1 = asyncio.create_task(self.push())
-        task2 = asyncio.create_task(self.voice.handler())
-        task3 = self.stop()
+        task2 = asyncio.create_task(self.keepalive())
+        task3 = asyncio.create_task(self.stop(start_event))
 
-        try:
-            # 等待前两个任务任一结束
-            await asyncio.wait(
-                [task1, task2],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-        except:
-            print(traceback.format_exc())
-        # finally:
-        #     # 取消前两个任务
-        #     for task in [task1, task2]:
-        #         if not task.done():
-        #             task.cancel()
+        done, pending = await asyncio.wait(
+            [task1, task2],
+            return_when=asyncio.FIRST_COMPLETED
+        )
 
+        # 可选地取消未完成的任务
+        for task in pending:
+            task.cancel()
+
+        # 触发 task3 开始
+        start_event.set()
         await task3
 
-    async def stop(self):
+    async def stop(self, start_event):
+        await start_event.wait()
         global playlist_handle_status
-
         if self.guild in play_list:
             del play_list[self.guild]
         if self.guild in playlist_handle_status and playlist_handle_status[self.guild]:
             playlist_handle_status[self.guild] = False
+        try:
+            await self.requestor.leave(self.channel_id)
+        except:
+            pass
+        if log_enabled:
+            logger.info(f'停止并清理，服务器: {self.guild}')
 
     async def push(self):
         global playlist_handle_status
         playlist_handle_status[self.guild] = True
-        if True:
+        try:
             await asyncio.sleep(1)
             new_channel = play_list[self.guild]['voice_channel']
-            last_voice_channel = new_channel
-            self.voice.channel_id = new_channel
-            while True:
-                if len(self.voice.rtp_url) != 0:
-                    rtp_url = self.voice.rtp_url
-                    break
-                await asyncio.sleep(0.2)
-            command = f'{ffmpeg_bin} -re -loglevel level+info -nostats -i - -map 0:a:0 -acodec libopus -ab 128k -ac 2 -ar 48000 -f tee [select=a:f=rtp:ssrc=1357:payload_type=100]{rtp_url}'
-            print('==============================')
-            print(ffmpeg_bin)
-            print(command)
+            self.channel_id = new_channel
+
+            try:
+                await self.requestor.leave(self.channel_id)
+            except:
+                pass
+            try:
+                res = await self.requestor.join(self.channel_id)
+            except Exception as e:
+                if log_enabled:
+                    logger.error(f'加入频道失败: {e}')
+                raise RuntimeError(f'加入频道失败 {e}')
+
+            rtp_url = f"rtp://{res['ip']}:{res['port']}?rtcpport={res['rtcp_port']}"
+
+            bitrate = int(res['bitrate'] / 1000)
+            bitrate *= 0.9 if bitrate > 100 else 1
+
+            while self.guild in guild_status and guild_status[self.guild] == Status.WAIT:
+                await asyncio.sleep(2)
+            command = f'{ffmpeg_bin} -re -loglevel level+info -nostats -i - -map 0:a:0 -acodec libopus -ab {bitrate}k -ac 2 -ar 48000 -f tee [select=a:f=rtp:ssrc=1111:payload_type=111]{rtp_url}'
+            if log_enabled:
+                logger.info(f'运行 ffmpeg 命令: {command}')
             p = await asyncio.create_subprocess_shell(
                 command,
                 stdin=asyncio.subprocess.PIPE,
@@ -260,9 +294,6 @@ class PlayHandler(threading.Thread):
 
             while True:
                 await asyncio.sleep(0.5)
-                while self.guild in guild_status and guild_status[self.guild] == Status.WAIT:
-                    await asyncio.sleep(1)
-
                 if play_list[self.guild]['now_playing'] and not play_list[self.guild]['play_list']:
                     music_info = play_list[self.guild]['now_playing']
                 else:
@@ -270,18 +301,17 @@ class PlayHandler(threading.Thread):
                     music_info['start'] = time.time()
                     play_list[self.guild]['now_playing'] = music_info
                 file = music_info['file']
-                # start = time.time()
-                # -filter:a "loudnorm=i=-27:tp=0.0"
-                command2 = f'{ffmpeg_bin}  -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2  -ar 48000 -f wav -'
 
-                print(command2)
+                command2 = f'{ffmpeg_bin} -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2 -ar 48000 -f wav -'
+                if log_enabled:
+                    logger.info(f'正在播放文件: {file}')
                 p2 = await asyncio.create_subprocess_shell(
                     command2,
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL
                 )
-                print('正在播放', file)
+
                 sleep_control = 1
                 every_shard_bytes = 192000 * sleep_control
                 sleep_control -= 0.004
@@ -310,6 +340,7 @@ class PlayHandler(threading.Thread):
                     play_list[self.guild]['now_playing']['ss'] = first_music_start_time - time.time()
                     i += 1
                     flag = 0
+
                     while True:
                         if self.guild not in guild_status:
                             guild_status[self.guild] = Status.END
@@ -317,9 +348,10 @@ class PlayHandler(threading.Thread):
                             state = guild_status[self.guild]
                             if state == Status.END:
                                 asyncio.run_coroutine_threadsafe(trigger_event(Status.START,
-                                                    PlayInfo(self.guild, last_voice_channel, file, self.token,
-                                                             music_info.get('extra'))),original_loop )
-                                print(time.time())
+                                                                               PlayInfo(self.guild, self.channel_id, file, self.token,
+                                                                                        music_info.get('extra'))), original_loop)
+                                if log_enabled:
+                                    logger.info(f'开始播放: {file}，服务器: {self.guild}')
                                 guild_status[self.guild] = Status.PLAYING
                             elif state == Status.SKIP:
                                 flag = 1
@@ -329,7 +361,6 @@ class PlayHandler(threading.Thread):
                                 play_list[self.guild]['play_list'] = []
                                 break
                         elif time.time() - start_time > sleep_control:
-                            # flag = 1
                             break
                         else:
                             await asyncio.sleep(0.001)
@@ -338,35 +369,35 @@ class PlayHandler(threading.Thread):
                         break
                 guild_status[self.guild] = Status.END
                 if len(play_list[self.guild]['play_list']) == 0:
-                    p.kill()
+                    try:
+                        p.kill()
+                    except:
+                        pass
                     del play_list[self.guild]
                     playlist_handle_status[self.guild] = False
+                    if log_enabled:
+                        logger.info(f'播放结束，服务器: {self.guild}')
                     break
+        except:
+            if log_enabled:
+                logger.error('推流过程中出现错误:', exc_info=True)
 
+    async def keepalive(self):
+        while True:
+            await asyncio.sleep(45)
+            await self.requestor.keep_alive(self.channel_id)
+            if log_enabled:
+                logger.info(f'发送保活请求，频道: {self.channel_id}')
 
 async def start():
-
     global original_loop
     original_loop = asyncio.get_event_loop()
     while True:
-        try:
-            for guild in play_list.keys():
-                self_token = play_list[guild]['token']
-                if guild not in playlist_handle_status and len(play_list[guild]) != 0:
-                    playlist_handle_status[guild] = True
-                    PlayHandler(guild, self_token).start()
-                elif guild in playlist_handle_status and not playlist_handle_status[guild] and len(
-                        play_list[guild]) != 0:
-                    playlist_handle_status[guild] = True
-                    PlayHandler(guild, self_token).start()
-            await asyncio.sleep(0.1)
-        except:
-            print(traceback.format_exc())
+        await asyncio.sleep(1000)
 
 from typing import Coroutine
-async def run_async(task:Coroutine,timeout=10):
-    return asyncio.run_coroutine_threadsafe(task,original_loop).result(timeout=timeout)
-
+async def run_async(task: Coroutine, timeout=10):
+    return asyncio.run_coroutine_threadsafe(task, original_loop).result(timeout=timeout)
 
 def run():
     asyncio.run(start())
