@@ -9,7 +9,6 @@ from asyncio import AbstractEventLoop
 from .requestor import VoiceRequestor
 
 
-from .voice import Voice
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -42,12 +41,12 @@ class Status(Enum):
     EMPTY = 11
 
 guild_status = {}
-play_list: Dict[str, Dict[str, Union[str, Dict, List[Dict]]]] = {}
+play_list: Dict[str, Dict[str, Union[str, Dict[str,str], List[Dict]]]] = {}
 play_list_example = {'服务器id':
                               {'token': '机器人token',
                                'voice_channel': '语音频道id',
                                'text_channel': '最后一次执行指令的文字频道id',
-                               'now_playing': {'file': '歌曲文件', 'ss': 0, 'start': 0},
+                               'now_playing': {'file': '歌曲文件', 'ss': 0, 'start': 0,'extra':{}},
                                'play_list': [
                                    {'file': '路径', 'ss': 0}]}}
 
@@ -278,6 +277,8 @@ class PlayHandler(threading.Thread):
 
             while self.guild in guild_status and guild_status[self.guild] == Status.WAIT:
                 await asyncio.sleep(2)
+
+
             command = f'{ffmpeg_bin} -re -loglevel level+info -nostats -i - -map 0:a:0 -acodec libopus -ab {bitrate}k -ac 2 -ar 48000 -f tee [select=a:f=rtp:ssrc=1111:payload_type=111]{rtp_url}'
             if log_enabled:
                 logger.info(f'运行 ffmpeg 命令: {command}')
@@ -298,7 +299,24 @@ class PlayHandler(threading.Thread):
                     play_list[self.guild]['now_playing'] = music_info
                 file = music_info['file']
 
-                command2 = f'{ffmpeg_bin} -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2 -ar 48000 -f wav -'
+
+                extra_command = ''
+                if extra_data := music_info.get('extra'):
+                    extra_command = extra_data.get('extra_command') or ''
+
+                    def pack_command(full_command,name,value):
+                        if value:
+                            full_command += f' -{name} "{value}"'
+                        return full_command
+
+
+                    extra_command = pack_command(extra_command,'headers',extra_data.get('header'))
+                    extra_command = pack_command(extra_command,'cookies',extra_data.get('cookies'))
+                    extra_command = pack_command(extra_command,'user_agent',extra_data.get('user_agent'))
+                    extra_command = pack_command(extra_command,'referer',extra_data.get('referer'))
+
+
+                command2 = f'{ffmpeg_bin} -nostats -i "{file}" {extra_command} -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2 -ar 48000 -f wav -'
                 if log_enabled:
                     logger.info(f'正在播放文件: {file}')
                 p2 = await asyncio.create_subprocess_shell(
